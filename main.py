@@ -159,7 +159,7 @@ class GroupLotteryPlugin(Star):
         self._add_participant(group_id, user_id, lottery_name)
         event.set_result(MessageEventResult().message(f"你已成功参与抽奖'{lottery_name}'！"))
 
-    @filter.command("一键抽奖",alias={'一键开奖'})
+    @filter.command("一键抽奖", alias={'一键开奖'})
     async def draw_lottery_cmd(self, event: AstrMessageEvent, lottery_name: str = None):
         if not lottery_name:
             yield event.plain_result("请输入要执行开奖的抽奖名称！")
@@ -177,51 +177,80 @@ class GroupLotteryPlugin(Star):
             yield event.plain_result(f"未找到抽奖'{lottery_name}'！")
             return
 
-        # 执行抽奖逻辑
         records = lottery_info.get("records", [])
         if not records:
             yield event.plain_result(f"抽奖'{lottery_name}'目前还没有人参与哦。")
             return
 
-        # 抽取逻辑
+        # 1. 准备抽奖池
         num = lottery_info.get("number_of_winners", 1)
-        weighted = lottery_info.get("weighted", False)
+        is_weighted = lottery_info.get("weighted", False)
         
-        available_ids = [r["user_id"] for r in records]
+        # 获取当前所有唯一的参与者 UID
+        unique_participants = list(set(str(r["user_id"]) for r in records))
         
-        if weighted:
-            # 简单的加权逻辑：根据用户在records出现的总次数做倒数
-            user_counts = {}
-            for uid in available_ids:
-                user_counts[uid] = user_counts.get(uid, 0) + 1
+        # 2. 计算权重 (如果开启了高频降权)
+        if is_weighted:
+            past_records = group_data.get("past_lottery", {}).get(lottery_name, [])
             
-            unique_users = list(user_counts.keys())
-            weights = [1/user_counts[u] for u in unique_users]
-            winners = random.choices(unique_users, weights=weights, k=min(num, len(unique_users)))
+            # 统计每个人的历史中奖次数
+            win_counts = {}
+            for record in past_records:
+                for winner in record.get("winners", []):
+                    w_id = str(winner)
+                    win_counts[w_id] = win_counts.get(w_id, 0) + 1
+            
+            # 核心算法：权重 = 1 / (1 + 历史中奖次数)
+            weights = []
+            for uid in unique_participants:
+                count = win_counts.get(uid, 0)
+                # 即使中奖多次，权重也不会归零，只是极低
+                weights.append(1.0 / (1.0 + count))
+            
+            # 按照计算出的权重抽取
+            # k 需要取 参与人数和需求人数的最小值，防止报错
+            sample_size = min(num, len(unique_participants))
+            
+            # 注意：random.choices 是有放回抽样，我们需要不放回地抽取指定人数
+            winners = []
+            temp_participants = unique_participants.copy()
+            temp_weights = weights.copy()
+            
+            for _ in range(sample_size):
+                if not temp_participants: break
+                pick = random.choices(temp_participants, weights=temp_weights, k=1)[0]
+                winners.append(pick)
+                # 抽中后移除，实现不放回抽样
+                idx = temp_participants.index(pick)
+                temp_participants.pop(idx)
+                temp_weights.pop(idx)
         else:
-            winners = random.sample(list(set(available_ids)), min(num, len(set(available_ids))))
+            # 传统等概率随机抽取
+            winners = random.sample(unique_participants, min(num, len(unique_participants)))
 
-        # 记录到历史
+        # 3. 记录历史 (如果不是匿名抽奖)
         if not lottery_info.get("anonymous"):
             past_data = group_data.setdefault("past_lottery", {}).setdefault(lottery_name, [])
             past_data.append({"winners": winners, "timestamp": datetime.now().isoformat()})
 
         self._save_records()
         
+        # 4. 构建消息
         chain = [
-            Comp.Plain(f"🎉 抽奖 '{lottery_name}' 开奖啦！\n\u200b"), 
+            Comp.Plain(f"🎉 抽奖 '{lottery_name}' 开奖啦！\n"), 
+            Comp.Plain(f"本次开启高频降权: {'✅' if is_weighted else '❌'}\n"),
             Comp.Plain("中奖名单如下：") 
         ]
 
-        # 循环中奖者名单
         for winner_id in winners:
-            chain.append(Comp.Plain("\u200b\n\u200b")) 
-            chain.append(Comp.Plain("\u200b - \u200b"))
-            chain.append(Comp.Plain(winner_id))
+            chain.append(Comp.Plain("\n - "))
             chain.append(Comp.At(qq=winner_id))
+            chain.append(Comp.Plain(f" ({winner_id})"))
                 
+        # 清理当前抽奖记录
         del self.group_lotteries[group_id]["cur_lottery"][lottery_name]
-        # 使用 chain_result 发送完整消息链
+        self._save_records()
+        
         yield event.chain_result(chain)
     @filter.command("删除抽奖")
     async def delete_lottery(self, event: AstrMessageEvent, lottery_name: str = None):
