@@ -123,7 +123,7 @@ class GroupLotteryPlugin(Star):
             "records": []
         }
         self._save_records()
-        event.set_result(MessageEventResult().message(f"抽奖'{lottery_name}'已创建！\n每次抽取: {n_winners}人\n每人中奖冷却期: {cooldown}次\n按频次降权: {'是' if is_weighted else '否'}\n不记录历史: {'是' if is_anon else '否'}"))
+        event.set_result(MessageEventResult().message(f"抽奖'{lottery_name}'已创建！\n每次抽取: {n_winners}人\n每人中奖冷却期: {c_down}次\n按频次降权: {'是' if is_weighted else '否'}\n不记录历史: {'是' if is_anon else '否'}"))
 
     @filter.command("参与抽奖", alias={'p'})
     async def participate_lottery(self, event: AstrMessageEvent, lottery_name: str = None):
