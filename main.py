@@ -235,22 +235,20 @@ class GroupLotteryPlugin(Star):
 
         self._save_records()
         
-        # 4. 构建消息
         chain = [
-            Comp.Plain(f"🎉 抽奖 '{lottery_name}' 开奖啦！\n"), 
-            Comp.Plain(f"本次开启高频降权: {'✅' if is_weighted else '❌'}\n"),
+            Comp.Plain(f"🎉 抽奖 '{lottery_name}' 开奖啦！\n\u200b"), 
             Comp.Plain("中奖名单如下：") 
         ]
 
+        # 循环中奖者名单
         for winner_id in winners:
-            chain.append(Comp.Plain("\n - "))
+            chain.append(Comp.Plain("\u200b\n\u200b")) 
+            chain.append(Comp.Plain("\u200b - \u200b"))
+            chain.append(Comp.Plain(winner_id))
             chain.append(Comp.At(qq=winner_id))
-            chain.append(Comp.Plain(f" ({winner_id})"))
                 
-        # 清理当前抽奖记录
         del self.group_lotteries[group_id]["cur_lottery"][lottery_name]
-        self._save_records()
-        
+        # 使用 chain_result 发送完整消息链
         yield event.chain_result(chain)
     @filter.command("删除抽奖")
     async def delete_lottery(self, event: AstrMessageEvent, lottery_name: str = None):
