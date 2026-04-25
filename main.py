@@ -84,7 +84,7 @@ class GroupLotteryPlugin(Star):
         info = await event.bot.get_group_member_info(
                 group_id=group_id, user_id=user_id, no_cache=True
             )
-        return info["role"] == "owner"
+        return info["role"] == "owner" or info["role"] == "admin" 
 
     # --- 指令入口 ---
 
@@ -99,7 +99,7 @@ class GroupLotteryPlugin(Star):
 
         # 2. 权限判断
         if not await self._is_group_owner(event , int(group_id) , int(user_id) ):
-            return event.plain_result("只有群主才能创建抽奖！")
+            return event.plain_result("只有群主或管理员才能创建抽奖！")
 
         # 3. 数据合法性校验与转换
         n_winners = self._safe_int(number_of_winners, 1)
@@ -123,7 +123,7 @@ class GroupLotteryPlugin(Star):
             "records": []
         }
         self._save_records()
-        event.set_result(MessageEventResult().message(f"抽奖'{lottery_name}'已创建！\n每次抽取: {n_winners}人\n每人中奖冷却期: {c_down}次\n按频次降权: {'是' if is_weighted else '否'}\n不记录历史: {'是' if is_anon else '否'}"))
+        event.set_result(MessageEventResult().message(f"抽奖'{lottery_name}'已创建！\n每次抽取: {n_winners}人\n每人中奖冷却期: {c_down}次\n{'未' if is_weighted else '已'}开启按频次降频，{'已' if is_anon else '未'}开启记录历史"))
 
     @filter.command("参与抽奖", alias={'p'})
     async def participate_lottery(self, event: AstrMessageEvent, lottery_name: str = None):
@@ -170,7 +170,7 @@ class GroupLotteryPlugin(Star):
         lottery_info = group_data.get("cur_lottery", {}).get(lottery_name)
         
         if not await self._is_group_owner(event, int(event.get_group_id()), int(event.get_sender_id())):
-            yield event.plain_result("只有群主才能进行抽奖！")
+            yield event.plain_result("只有群主或管理员才能进行抽奖！")
             return
 
         if not lottery_info:
@@ -257,7 +257,7 @@ class GroupLotteryPlugin(Star):
 
         group_id = str(event.get_group_id())
         if not await self._is_group_owner(event, int(event.get_group_id()), int(event.get_sender_id())):
-            return event.plain_result("只有群主才能删除抽奖！")
+            return event.plain_result("只有群主或管理员才能删除抽奖！")
 
         if lottery_name not in self.group_lotteries.get(group_id, {}).get("cur_lottery", {}):
             return event.plain_result(f"不存在名为'{lottery_name}'的抽奖。")
